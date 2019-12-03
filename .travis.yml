@@ -25,7 +25,7 @@ matrix:
 
 install:
   - pip install -U pipenv
-  - pipenv install -d
+  - pipenv install -d --skip-lock
 
 script: pipenv run pytest --cov=./privex -rxXs -v
 after_success:
