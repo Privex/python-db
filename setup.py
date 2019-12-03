@@ -37,7 +37,7 @@ import warnings
 
 from setuptools import setup, find_packages
 import os
-import lockmgr
+from privex import db
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -65,7 +65,7 @@ except (ImportError, AttributeError) as e:
 setup(
     name='privex_db',
 
-    version=lockmgr.VERSION,
+    version=db.VERSION,
 
     description="Privex's Python Database helpers and wrappers (mini ORM)",
     long_description=long_description,
