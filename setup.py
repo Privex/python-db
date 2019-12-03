@@ -63,7 +63,7 @@ except (ImportError, AttributeError) as e:
 
 
 setup(
-    name='privex-db',
+    name='privex_db',
 
     version=lockmgr.VERSION,
 
