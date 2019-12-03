@@ -76,7 +76,6 @@ setup(
 
     license='MIT',
     install_requires=[
-        'Django',
         'privex-helpers>=2.3.0',
         'python-dateutil',
         'pytz',
