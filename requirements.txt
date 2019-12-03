@@ -1,0 +1,22 @@
+###
+# NOTE: pipenv is the preferred installation method for a development environment
+# This file exists for compatibility reasons (readthedocs does not support pipenv)
+###
+coverage
+codecov
+pytest
+pytest-cov
+privex-helpers[setuppy]>=2.3.0
+sphinx-autobuild>=0.7.1
+restructuredtext-lint>=1.3.0
+sphinx-rtd-theme>=0.4.3
+docutils>=0.14
+Sphinx>=2.1.2
+MarkupSafe>=1.1.1
+python-dotenv
+privex-loghelper
+python-dateutil
+pytz
+mysqlclient
+psycopg2
+typing-extensions
