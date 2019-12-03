@@ -1,0 +1,32 @@
+dist: bionic
+services:
+  - postgresql
+addons:
+  mariadb: '10.3'
+  postgresql: '10'
+
+before_script:
+  - psql -c 'create database privex_py_db;' -U postgres;
+
+env:
+  global:
+    - DB_NAME=privex_py_db
+    - DB_BACKEND=postgres
+    - DB_USER=postgres
+
+language: python
+cache: pip
+matrix:
+  include:
+    - python: 3.6
+    - python: 3.7
+    - python: 3.8
+    - python: nightly
+
+install:
+  - pip install -U pipenv
+  - pipenv install -d
+
+script: pipenv run pytest --cov=./privex -rxXs -v
+after_success:
+  - codecov

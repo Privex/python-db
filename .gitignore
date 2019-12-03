@@ -1,0 +1,18 @@
+*.log
+*.swp
+__pycache__
+.idea
+.vscode
+venv/
+venv_*/
+.stubs/
+.env
+
+# PyPi build files
+build
+dist
+*.egg-info
+
+# Test ouput files
+.coverage
+/*.sqlite*
