@@ -8,7 +8,6 @@ Privex's Python Database Library
 ![License Button](https://img.shields.io/pypi/l/privex-db) 
 ![PyPI - Downloads](https://img.shields.io/pypi/dm/privex-db)
 ![PyPI - Python Version](https://img.shields.io/pypi/pyversions/privex-db) 
-![PyPI - Django Version](https://img.shields.io/pypi/djversions/privex-db)
 ![GitHub last commit](https://img.shields.io/github/last-commit/Privex/python-db)
 
 
