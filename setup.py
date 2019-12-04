@@ -52,7 +52,7 @@ try:
     # noinspection PyUnresolvedReferences
     from privex.helpers import settings
 
-    settings.VERSION_FILE = os.path.join(BASE_DIR, 'lockmgr', '__init__.py')
+    settings.VERSION_FILE = os.path.join(BASE_DIR, 'privex', 'db', '__init__.py')
     import privex.helpers.setuppy.commands
     
     extra_commands['extras'] = privex.helpers.setuppy.commands.ExtrasCommand
