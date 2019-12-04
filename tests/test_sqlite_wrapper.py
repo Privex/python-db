@@ -91,3 +91,12 @@ class TestSQLiteWrapper(PrivexDBTestBase):
     
         self.assertEqual(users[2]['last_name'], 'Johnson')
 
+    def test_insert_helper(self):
+        w = self.wrp
+        w.query_mode = 'dict'
+        res = w.insert('users', first_name='Dave', last_name='Johnson')
+        self.assertEqual(res.lastrowid, 1)
+
+        user = w.find_user(res.lastrowid)
+        self.assertEqual(user['first_name'], 'Dave')
+        self.assertEqual(user['last_name'], 'Johnson')

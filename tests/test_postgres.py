@@ -199,6 +199,17 @@ class TestPostgresWrapper(BasePostgresTest):
     
         self.assertEqual(users[2]['last_name'], 'Johnson')
 
+    def test_insert_helper(self):
+        w = self.wrp
+        w.query_mode = 'dict'
+        res = w.insert('users', first_name='Dave', last_name='Johnson')
+        self.assertTrue(hasattr(res, 'lastrowid'))
+        self.assertTrue(hasattr(res, 'rowcount'))
+    
+        user = w.find_user(w.last_insert_id('users'))
+        self.assertEqual(user['first_name'], 'Dave')
+        self.assertEqual(user['last_name'], 'Johnson')
+
 
 @pytest.mark.skipif(pg_conn is None, reason="Failed to connect to PostgreSQL")
 @pytest.mark.skipif(HAS_PSYCOPG is False, reason="Library 'psycopg2' is not installed...")

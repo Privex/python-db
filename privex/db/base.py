@@ -24,7 +24,7 @@ This module contains core functions/classes which are used across the module, as
 """
 import abc
 from abc import ABC
-from typing import List, Tuple, Set, Union, Any, Optional, TypeVar, Generic
+from typing import List, Tuple, Set, Union, Any, Optional, TypeVar, Generic, Dict
 from privex.helpers import dictable_namedtuple, is_namedtuple, empty, DictObject
 import logging
 
@@ -157,6 +157,29 @@ class CursorManager(GenericCursor, Generic[CUR], object):
     #             pass
 
 
+def cursor_to_dict(cur: Union[GenericCursor, Any]) -> DictObject:
+    """
+    Convert a cursor object into a dictionary (:class:`.DictObject`), allowing the original cursor to be safely closed
+    without losing any important data.
+    
+    :param GenericCursor cur:    The cursor to extract.
+    :return DictObject cur_data: The cursors attributes extracted into a dictionary (:class:`.DictObject`)
+    """
+    o = DictObject()
+    if hasattr(cur, '__dir__'):
+        _attrs = cur.__dir__()
+        for a in _attrs:
+            if a[0:2] == '__': continue   # Ignore private attributes
+            o[a] = getattr(cur, a, None)
+        return o
+    
+    o.lastrowid = getattr(cur, 'lastrowid', None)
+    o.rowcount = getattr(cur, 'rowcount', None)
+    o.description = getattr(cur, 'description', None)
+    o.arraysize = getattr(cur, 'arraysize', None)
+    return o
+    
+
 class GenericDBWrapper(ABC):
     """
     This is a generic database wrapper class, which implements various methods such as:
@@ -197,6 +220,9 @@ class GenericDBWrapper(ABC):
     This attribute can be overridden on your inheriting wrapper class to change the default query mode used
     if one isn't specified in the constructor.
     """
+
+    DEFAULT_PLACEHOLDER: str = "?"
+    """The placeholder used by the database API for prepared statements in .execute()"""
     
     DEFAULT_ENABLE_EXECUTION_LOG: bool = True
     
@@ -520,6 +546,52 @@ class GenericDBWrapper(ABC):
     def fetchall(self, sql: str, *params, **kwparams) -> Optional[Union[List[dict], List[tuple]]]:
         """Alias for :meth:`.fetch` with ``fetch='all'``"""
         return self.fetch(sql, *params, fetch='all', **kwparams)
+
+    def insert(self, _table: str, _cursor: GenericCursor = None, **fields) -> Union[DictObject, GenericCursor]:
+        """
+        Builds and executes an insert query into the table ``_table`` using the keyword arguments for column names
+        and values.
+        
+            >>> db = GenericDBWrapper(db='SomeDB')
+            >>> cur = db.insert('users', first_name='John', last_name='Doe', phone='+1-800-123-4567')
+            >>> cur.lastrowid
+            15
+        
+        :param str _table:             The table to insert into
+        :param GenericCursor _cursor:  Optionally, specify a cursor to use, instead of the default :attr:`.cursor`
+        :param fields:                 Keyword args mapping column names to values
+        :return DictObject cur: If no custom cursor was specified, the cursor used to execute the query is converted
+                                into a :class:`.DictObject` before closing it, then the dict is returned.
+        :return GenericCursor cur: If a custom cursor (``_cursor``) was specified, then that cursor will NOT be
+                                   auto-closed, and the original cursor instance will be returned.
+        """
+        query = self._build_insert_query(_table, list(fields.keys()))
+        
+        if _cursor is not None:  # If a custom cursor is passed, execute with that cursor and return the cursor.
+            _cursor.execute(query, list(fields.values()))
+            return _cursor
+        
+        # If no custom cursor was passed, use self.cursor, and use cursor_to_dict to preserve the cursor data after
+        # the cursor is closed.
+        with self.cursor as _cursor:
+            _cursor.execute(query, list(fields.values()))
+            res = cursor_to_dict(_cursor)
+        return res
+        
+
+    def _build_insert_query(self, table, fields: list, placeholder: str = None) -> str:
+        """
+        Builds an SQL ``INSERT`` query based on the passed table name ``table``, and a list of column names to
+        insert into (``fields``).
+        
+        :param str table:        The table to insert into.
+        :param list fields:      A ``dict`` mapping columns to values, e.g. ``dict(username='john', age=39)``
+        :param str placeholder:  The value placeholder. If None, defaults to :attr:`.DEFAULT_PLACEHOLDER`.
+        :return str query: The built SQL query.
+        """
+        placeholder = self.DEFAULT_PLACEHOLDER if placeholder is None else placeholder
+        sql_placeholders = ', '.join([placeholder for _ in fields])
+        return f"INSERT INTO {table} ({', '.join(fields)}) VALUES ({sql_placeholders});"
 
     @staticmethod
     def _zip_cols(cursor: GenericCursor, row: iter) -> DictObject:

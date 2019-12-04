@@ -24,7 +24,7 @@ This module holds :class:`.PostgresWrapper` - a somewhat higher level class for 
 
 """
 import logging
-from typing import List, Tuple, Optional, Any, Union, Set
+from typing import List, Tuple, Optional, Any, Union, Set, Dict
 
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -67,6 +67,7 @@ class PostgresWrapper(GenericDBWrapper):
     
     DEFAULT_DB: str = None
     DEFAULT_QUERY_MODE = 'dict'
+    DEFAULT_PLACEHOLDER = '%s'
     
     DEFAULT_TABLE_QUERY = """
     SELECT EXISTS (
@@ -95,7 +96,7 @@ class PostgresWrapper(GenericDBWrapper):
     
     _cursor_cls: psycopg2.extensions.cursor
     
-    cursor_map = {
+    cursor_map: Dict[str, PG_Cursor] = {
         'flat': psycopg2.extras.NamedTupleCursor,
         'dict': psycopg2.extras.RealDictCursor,
     }
@@ -183,6 +184,9 @@ class PostgresWrapper(GenericDBWrapper):
         if 'query_mode' in kwparams and 'cursor' not in kwparams:
             kwargs['cursor'] = self.get_cursor(cursor_class=self.cursor_map[kwparams['query_mode']])
         return super().query(*args, **kwargs)
+    
+    def insert(self, _table: str, _cursor: PG_Cursor = None, **fields) -> Union[DictObject, PG_Cursor]:
+        return super().insert(_table, _cursor, **fields)
 
     def table_exists(self, table: str, schema: str = None) -> bool:
         schema = self.db_schema if schema is None else schema

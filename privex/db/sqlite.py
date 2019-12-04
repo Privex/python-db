@@ -27,7 +27,7 @@ import sqlite3
 import logging
 from os.path import expanduser, join, dirname, isabs
 from typing import List, Tuple, Optional, Any, Union, Set
-from privex.helpers import empty
+from privex.helpers import empty, DictObject
 
 from privex.db.base import GenericDBWrapper
 from privex.db.query.sqlite import SqliteQueryBuilder
@@ -163,9 +163,14 @@ class SqliteWrapper(GenericDBWrapper):
 
     def _get_cursor(self, cursor_name=None, cursor_class=None, *args, **kwargs):
         return super()._get_cursor(cursor_name=cursor_name, cursor_class=cursor_class, *args, **kwargs)
-    
+
+    # noinspection PyTypeChecker
     def builder(self, table: str) -> SqliteQueryBuilder:
         return SqliteQueryBuilder(table=table, connection=self.conn)
+
+    # noinspection PyTypeChecker
+    def insert(self, _table: str, _cursor: sqlite3.Cursor = None, **fields) -> Union[DictObject, sqlite3.Cursor]:
+        return super().insert(_table, _cursor, **fields)
     
     def __enter__(self):
         self._conn = self.conn

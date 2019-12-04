@@ -3,10 +3,16 @@
 __pycache__
 .idea
 .vscode
+# Local development files / folders
 venv/
 venv_*/
 .stubs/
 .env
+### Exclude database files
+/*.sqlite*
+/*.db
+### Exclude files starting with dev_ (e.g. small local python scripts using for experimenting / testing )
+/dev_*
 
 # PyPi build files
 build
@@ -15,4 +21,3 @@ dist
 
 # Test ouput files
 .coverage
-/*.sqlite*
