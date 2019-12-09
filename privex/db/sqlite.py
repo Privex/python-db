@@ -31,7 +31,7 @@ from os.path import expanduser, join, dirname, isabs
 from typing import List, Tuple, Optional, Any, Union, Set, Iterable
 
 from async_property import async_property
-from privex.helpers import empty, DictObject, is_namedtuple
+from privex.helpers import empty, DictObject, is_namedtuple, empty_if
 
 from privex.db.base import GenericDBWrapper, GenericAsyncDBWrapper, _should_zip, cursor_to_dict, DBExecution
 from privex.db.query.sqlite import SqliteQueryBuilder
@@ -39,6 +39,33 @@ from privex.db.query import SqliteAsyncQueryBuilder
 from privex.db.types import GenericAsyncCursor
 
 log = logging.getLogger(__name__)
+
+
+def parse_db_args(ins, db=None, memory_persist=False, connection_kwargs=None, default_kwargs=None):
+    connection_kwargs = empty_if(connection_kwargs, {})
+    default_conn_kwargs = empty_if(
+        default_kwargs, dict(isolation_level=ins.isolation_level, timeout=ins.db_timeout)
+    )
+    
+    db = 'file::memory:?cache=shared' if memory_persist else empty_if(db, ins.DEFAULT_DB)
+    
+    if ':memory:' not in db:
+        db_folder = dirname(db)
+        if not isabs(db):
+            log.debug("Passed 'db' argument isn't absolute: %s", db)
+            db = join(ins.DEFAULT_DB_FOLDER, db)
+            log.debug("Prepended DEFAULT_DB_FOLDER to 'db' argument: %s", db)
+            db_folder = dirname(db)
+        
+        if not os.path.exists(db_folder):
+            log.debug("Database folder '%s' doesn't exist. Creating it + any missing parent folders", db_folder)
+            os.makedirs(db_folder)
+    else:
+        log.debug("Passed 'db' argument is %s - using in-memory sqlite3 database.", db)
+        if 'file:' in db:
+            default_conn_kwargs['uri'] = True
+    
+    return db, {**default_conn_kwargs, **connection_kwargs}
 
 
 class SqliteWrapper(GenericDBWrapper):
@@ -129,35 +156,36 @@ class SqliteWrapper(GenericDBWrapper):
         :key str query_mode: Either ``'flat'`` (query returns tuples) or ``'dict'`` (query returns dicts).
                              More details in PyDoc block under :py:attr:`.query_mode`
         
+        :key bool memory_persist: Use a shared in-memory database, which can be accessed by other instances of
+                                  this class (in this process) - which is cleared after all memory
+                                  connections are closed.
+                                  Shortcut for ``db='file::memory:?cache=shared'``
+        
         .. _Python SQLite3 Docs: https://docs.python.org/3.8/library/sqlite3.html#sqlite3.Connection.isolation_level
         
         """
-        db = self.DEFAULT_DB if db is None else db
-        if ':memory:' not in db:
-            db_folder = dirname(db)
-            if not isabs(db):
-                log.debug("Passed 'db' argument isn't absolute: %s", db)
-                db = join(self.DEFAULT_DB_FOLDER, db)
-                log.debug("Prepended DEFAULT_DB_FOLDER to 'db' argument: %s", db)
-                db_folder = dirname(db)
-        
-            if not os.path.exists(db_folder):
-                log.debug("Database folder '%s' doesn't exist. Creating it + any missing parent folders", db_folder)
-                os.makedirs(db_folder)
-        else:
-            log.debug("Passed 'db' argument is :memory: - using in-memory sqlite3 database.")
-        self.db = db
         self.isolation_level = isolation_level
         self.db_timeout = int(kwargs.pop('db_timeout', 30))
         self.query_mode = kwargs.pop('query_mode', 'dict')
         self._conn = None
         self._builder = None
         
+        memory_persist = kwargs.pop('memory_persist', False)
+
+        db, conn_kwargs = parse_db_args(
+            self, db, memory_persist=memory_persist, connection_kwargs=kwargs.pop('connection_kwargs', {})
+        )
+
+        self.db = db
+
+        # conn_kwargs = {**default_conn_kwargs, **kwargs.pop('connection_kwargs', {})}
         super().__init__(
             db=db, connector_func=sqlite3.connect, connector_args=[db], query_mode=self.query_mode,
-            connector_kwargs=dict(isolation_level=self.isolation_level, timeout=self.db_timeout),
+            connector_kwargs=conn_kwargs,
             **kwargs
         )
+
+
 
     # make_connection: sqlite3.Connection
 
@@ -334,31 +362,38 @@ try:
             .. _Python SQLite3 Docs: https://docs.python.org/3.8/library/sqlite3.html#sqlite3.Connection.isolation_level
 
             """
-            db = self.DEFAULT_DB if db is None else db
-            if ':memory:' not in db:
-                db_folder = dirname(db)
-                if not isabs(db):
-                    log.debug("Passed 'db' argument isn't absolute: %s", db)
-                    db = join(self.DEFAULT_DB_FOLDER, db)
-                    log.debug("Prepended DEFAULT_DB_FOLDER to 'db' argument: %s", db)
-                    db_folder = dirname(db)
-            
-                if not os.path.exists(db_folder):
-                    log.debug("Database folder '%s' doesn't exist. Creating it + any missing parent folders", db_folder)
-                    os.makedirs(db_folder)
-            else:
-                log.debug("Passed 'db' argument is :memory: - using in-memory sqlite3 database.")
-            self.db = db
+
             self.isolation_level = isolation_level
             self.db_timeout = int(kwargs.pop('db_timeout', 30))
             self.query_mode = kwargs.pop('query_mode', 'dict')
             self._conn = None
             self._builder = None
-        
+            
+            memory_persist = kwargs.pop('memory_persist', False)
+
+            db, conn_kwargs = parse_db_args(
+                self, db, memory_persist=memory_persist, connection_kwargs=kwargs.pop('connection_kwargs', {})
+            )
+
+            # db = self.DEFAULT_DB if db is None else db
+            # if ':memory:' not in db:
+            #     db_folder = dirname(db)
+            #     if not isabs(db):
+            #         log.debug("Passed 'db' argument isn't absolute: %s", db)
+            #         db = join(self.DEFAULT_DB_FOLDER, db)
+            #         log.debug("Prepended DEFAULT_DB_FOLDER to 'db' argument: %s", db)
+            #         db_folder = dirname(db)
+            #
+            #     if not os.path.exists(db_folder):
+            #         log.debug("Database folder '%s' doesn't exist. Creating it + any missing parent folders", db_folder)
+            #         os.makedirs(db_folder)
+            # else:
+            #     log.debug("Passed 'db' argument is :memory: - using in-memory sqlite3 database.")
+            self.db = db
+            
             super().__init__(
                 db=db, connector_func=aiosqlite.connect, connector_args=[db], query_mode=self.query_mode,
-                connector_kwargs=dict(isolation_level=self.isolation_level, timeout=self.db_timeout),
-                **kwargs
+                connector_kwargs=conn_kwargs, **kwargs
             )
 
         async def get_cursor(self, cursor_name=None, cursor_class=None, *args, **kwargs) -> aiosqlite.Cursor:

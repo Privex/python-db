@@ -174,7 +174,7 @@ try:
     class ExampleAsyncWrapper(SqliteAsyncWrapper, _TestAsyncWrapperMixin):
         example_users = example_users
     
-        DEFAULT_DB: str = 'file::memory:?cache=privexdbtests'
+        DEFAULT_DB: str = 'file::memory:?cache=shared'
         SCHEMAS: List[Tuple[str, str]] = [
             (
                 'users',

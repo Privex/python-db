@@ -1,10 +1,13 @@
 import pytest
-
+import sqlite3
 from privex.db import QueryMode
 from tests.base import ExampleAsyncWrapper
 
 
 wrp: ExampleAsyncWrapper = ExampleAsyncWrapper()
+
+# To keep the shared memory persistent database alive, we open an sqlite3 connection which isn't actually used.
+_conn = sqlite3.connect(ExampleAsyncWrapper.DEFAULT_DB, uri=True)
 
 
 @pytest.fixture()
