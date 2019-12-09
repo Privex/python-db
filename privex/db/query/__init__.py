@@ -1,5 +1,8 @@
 import logging
 from privex.db.query.base import BaseQueryBuilder, QueryMode
+import nest_asyncio
+
+nest_asyncio.apply()
 
 log = logging.getLogger(__name__)
 
@@ -13,7 +16,10 @@ except ImportError:
 
 try:
     from privex.db.query.sqlite import SqliteQueryBuilder
-    __all__ += ['SqliteQueryBuilder']
+    from privex.db.query.asyncx.sqlite import SqliteAsyncQueryBuilder
+
+    __all__ += ['SqliteQueryBuilder', 'SqliteAsyncQueryBuilder']
 except ImportError:
     log.warning("Failed to import privex.db.query.sqlite (missing Python SQLite API?)")
+
 

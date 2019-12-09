@@ -76,7 +76,10 @@ setup(
 
     license='MIT',
     install_requires=[
-        'privex-helpers>=2.3.0',
+        'privex-helpers>=2.6.0',
+        'aiosqlite',
+        'async-property',
+        'nest_asyncio',
         'python-dateutil',
         'pytz',
         'typing-extensions',

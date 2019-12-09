@@ -21,14 +21,17 @@ by all unit tests.
 """
 import logging
 import sqlite3
+import warnings
+
 import dotenv
 from os import getenv as env
 from typing import List, Tuple
 from unittest import TestCase
 from privex.loghelper import LogHelper
-from privex.helpers import dictable_namedtuple
+from privex.helpers import dictable_namedtuple, Mocker
 from privex.db import SqliteWrapper, BaseQueryBuilder, SqliteQueryBuilder, QueryMode
 from privex.db import _setup_logging
+from privex.db.sqlite import SqliteAsyncWrapper
 
 try:
     dotenv.read_dotenv()
@@ -46,7 +49,11 @@ _lh.add_console_handler()
 log = _lh.get_logger()
 
 
-class PrivexDBTestBase(TestCase):
+class PrivexTestBase(TestCase):
+    pass
+
+
+class PrivexDBTestBase(PrivexTestBase):
     """
     Base class for all privex-db test classes. Includes :meth:`.tearDown` to reset database after each test.
     """
@@ -60,7 +67,7 @@ class PrivexDBTestBase(TestCase):
 
 __all__ = [
     'PrivexDBTestBase', 'SqliteWrapper', 'BaseQueryBuilder', 'SqliteQueryBuilder', 'QueryMode',
-    'ExampleWrapper', 'LOG_LEVEL', 'LOG_FORMATTER'
+    'ExampleWrapper', 'LOG_LEVEL', 'LOG_FORMATTER', 'User', 'example_users'
 ]
 """
 We manually specify __all__ so that we can safely use ``from tests.base import *`` within each test file.
@@ -68,15 +75,17 @@ We manually specify __all__ so that we can safely use ``from tests.base import *
 
 User = dictable_namedtuple('User', 'first_name last_name')
 
+example_users = [
+    User('John', 'Doe'),
+    User('Jane', 'Smith'),
+    User('John', 'Johnson'),
+    User('Dave', 'Johnson'),
+    User('John', 'Smith'),
+]
+
 
 class _TestWrapperMixin:
-    example_users = [
-        User('John', 'Doe'),
-        User('Jane', 'Smith'),
-        User('John', 'Johnson'),
-        User('Dave', 'Johnson'),
-        User('John', 'Smith'),
-    ]
+    example_users = example_users
     
     def __init__(self, *args, **kwargs):
         super(_TestWrapperMixin, self).__init__(*args, **kwargs)
@@ -124,4 +133,74 @@ class ExampleWrapper(SqliteWrapper, _TestWrapperMixin):
     def __init__(self, *args, **kwargs):
         super(ExampleWrapper, self).__init__(*args, **kwargs)
 
+try:
+    import aiosqlite
+    HAS_ASYNC = True
+    
+    class _TestAsyncWrapperMixin:
+        def __init__(self, *args, **kwargs):
+            super(_TestWrapperMixin, self).__init__(*args, **kwargs)
+        
+        async def get_items(self):
+            return await self.fetchall("SELECT * FROM items;")
+        
+        async def find_item(self, id: int):
+            return await self.fetchone("SELECT * FROM items WHERE id = ?;", [id])
+        
+        async def get_users(self):
+            return await self.fetchall("SELECT * FROM users;")
+        
+        async def insert_user(self, first_name, last_name) -> aiosqlite.Cursor:
+            # c = await self.conn.cursor()
+            res = await self.execute(
+                "INSERT INTO users (first_name, last_name) "
+                "VALUES (?, ?);",
+                [first_name, last_name], fetch='no'
+            )
+            return res[1]
+        
+        async def insert_item(self, name) -> sqlite3.Cursor:
+            # c = await self.conn.cursor()
+            res = await self.execute(
+                "INSERT INTO items (name) VALUES (?);",
+                [name]
+            )
+            return res[1]
+        
+        async def find_user(self, id: int):
+            return await self.fetchone("SELECT * FROM users WHERE id = ?;", [id])
+    
+    
+    class ExampleAsyncWrapper(SqliteAsyncWrapper, _TestAsyncWrapperMixin):
+        example_users = example_users
+    
+        DEFAULT_DB: str = 'file::memory:?cache=privexdbtests'
+        SCHEMAS: List[Tuple[str, str]] = [
+            (
+                'users',
+                "CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, first_name TEXT, last_name TEXT);"
+            ),
+            (
+                'items', "CREATE TABLE items (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT);"
+            ),
+        ]
+    
+        def __init__(self, *args, **kwargs):
+            super(ExampleAsyncWrapper, self).__init__(*args, **kwargs)
 
+
+    # class PrivexAsyncTestBase(PrivexTestBase):
+    #     def setUp(self) -> None:
+    #         self.wrp = ExampleAsyncWrapper()
+    #
+    #     def tearDown(self) -> None:
+    #         self.wrp.drop_schemas()
+
+    # __all__ += ['PrivexAsyncTestBase', 'ExampleAsyncWrapper']
+    __all__ += ['ExampleAsyncWrapper']
+
+except ImportError:
+    HAS_ASYNC = False
+    # PrivexAsyncTestBase = Mocker()
+    ExampleAsyncWrapper = Mocker()
+    warnings.warn("Could not import 'aiosqlite'. ExampleAsyncWrapper will not be available.")

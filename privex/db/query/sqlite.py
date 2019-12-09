@@ -1,9 +1,8 @@
 import sqlite3
+import warnings
 from typing import Iterable, Union
 
-from privex.helpers import DictObject
-
-from privex.db.types import GenericCursor
+from privex.db.query.asyncx.sqlite import _zip_cols
 from privex.db.query.base import BaseQueryBuilder, QueryMode
 
 
@@ -13,7 +12,7 @@ class SqliteQueryBuilder(BaseQueryBuilder):
             self.execute()
         res = self.cursor.fetchone()
         if len(res) > 0 and query_mode == QueryMode.ROW_DICT:
-            res = self._zip_cols(self.cursor, tuple(res))
+            res = _zip_cols(self.cursor, tuple(res))
         return res
     
     def fetch(self, query_mode=QueryMode.ROW_DICT) -> Union[dict, tuple, None]:
@@ -23,7 +22,7 @@ class SqliteQueryBuilder(BaseQueryBuilder):
             self.execute()
             res = cur.fetchone()
             if len(res) > 0 and query_mode == QueryMode.ROW_DICT:
-                res = self._zip_cols(cur, tuple(res))
+                res = _zip_cols(cur, tuple(res))
             # cur.close()
         return res
 
@@ -38,14 +37,6 @@ class SqliteQueryBuilder(BaseQueryBuilder):
     def build_query(self) -> str:
         return self._build_query()
 
-    @staticmethod
-    def _zip_cols(cursor: Union[sqlite3.Cursor, GenericCursor], row: iter):
-        # combine the column names with the row data
-        # so it can be used like a dict
-        col_names = list(map(lambda x: x[0], cursor.description))
-        res = DictObject(zip(col_names, row))
-        return res
-
     def all(self, query_mode=QueryMode.ROW_DICT) -> Union[Iterable[dict], Iterable[tuple]]:
         if self.conn is None:
             raise Exception('Please set SqliteQueryBuilder.connection to an sqlite3 connection')
@@ -54,7 +45,7 @@ class SqliteQueryBuilder(BaseQueryBuilder):
         with self.cursor as cur:
             for res in self.execute():
                 if query_mode == QueryMode.ROW_DICT:
-                    yield self._zip_cols(cur, res)
+                    yield _zip_cols(cur, res)
                 else:
                     yield res
             # res = cur.fetchall()
@@ -63,3 +54,4 @@ class SqliteQueryBuilder(BaseQueryBuilder):
             #     res = [self._zip_cols(cur, r) for r in orig_res]
         # cur.close()
         # return res
+

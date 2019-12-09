@@ -43,9 +43,12 @@ X11 / MIT License
 
 import logging
 import warnings
+import nest_asyncio
 from privex.db.base import GenericDBWrapper, CursorManager
 from privex.db.types import GenericCursor, GenericConnection
 from privex.db.query.base import BaseQueryBuilder, QueryMode
+
+nest_asyncio.apply()
 
 __all__ = [
     'GenericDBWrapper', 'CursorManager', 'GenericCursor', 'GenericConnection', 'BaseQueryBuilder', 'QueryMode',
@@ -76,7 +79,18 @@ try:
     from privex.db.sqlite import SqliteWrapper
     __all__ += ['SqliteWrapper']
 except ImportError:
-    log.warning("Failed to import privex.db.sqlite (missing Python SQLite API?)")
+    log.warning("Failed to import privex.db.sqlite.SqliteWrapper (missing Python SQLite API?)")
+
+try:
+    from privex.db.sqlite import SqliteAsyncWrapper
+    from privex.db.query.asyncx import SqliteAsyncQueryBuilder
+    
+    __all__ += ['SqliteAsyncWrapper', 'SqliteAsyncQueryBuilder']
+except ImportError:
+    log.warning(
+        "Failed to import privex.db.sqlite.SqliteAsyncWrapper and/or privex.db.query.asyncx.SqliteAsyncQueryBuilder "
+        "(missing aiosqlite library?)"
+    )
 
 
 def _setup_logging(level=logging.WARNING):
@@ -99,7 +113,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'db'
 
-VERSION = '0.8.0'
+VERSION = '0.9.0'
 
 
 

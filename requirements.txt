@@ -6,6 +6,10 @@ coverage
 codecov
 pytest
 pytest-cov
+pytest-asyncio
+nest_asyncio
+async-property
+aiosqlite
 privex-helpers[setuppy]>=2.3.0
 sphinx-autobuild>=0.7.1
 restructuredtext-lint>=1.3.0

@@ -1,47 +1,47 @@
-import logging
 from abc import ABC, abstractmethod
-from enum import Enum
-from typing import List, Iterable, Union, Optional
+from typing import List, Optional, Union, Coroutine, Any
 
-from privex.db.base import CursorManager
-from privex.db.types import GenericCursor, GenericConnection
+from async_property import async_property
+from privex.helpers import awaitable, run_sync, empty_if
+
+from privex.db.base import AsyncCursorManager
+from privex.db.query.base import QueryMode
+from privex.db.types import GenericAsyncCursor, GenericAsyncConnection, STR_CORO, ANY_CORO, TUPD_CORO, TUP_DICT, \
+    TUPD_OPT_CORO, TUPDICT_OPT, GenericCursor
+
+import logging
 
 log = logging.getLogger(__name__)
 
 
-class QueryMode(Enum):
-    """
-    A small :class:`enum.Enum` used for the ``query_mode`` (whether to return rows as tuples or dicts) with
-    Query Builder classes (see :class:`.BaseQueryBuilder` :class:`.SqliteQueryBuilder` :class:`.PostgresQueryBuilder`)
-    """
-    DEFAULT = 'default'
-    ROW_TUPLE = 'tuple'
-    ROW_DICT = 'dict'
+async def async_iterate_list(obj):
+    x = []
+    async for l in obj:
+        x += [l]
+    return x
 
 
-class BaseQueryBuilder(ABC):
+class BaseAsyncQueryBuilder(ABC):
     """
-    This is an SQL query builder class which outputs ANSI compatible SQL queries, and can use connections/cursors
-    to execute the queries that it builds.
+    This is an asynchronous version of :class:`.BaseQueryBuilder` - an abstract base class for Async query builders
+    to inherit from.
     
-    This is an **abstract base class** (:class:`abc.ABC`) meaning that it's not designed to be constructed directly,
-    instead it should be used as a parent class for a database specific query builder, for example
-    :class:`.SqliteQueryBuilder` or :class:`.PostgresQueryBuilder`.
+    To allow chaining to function correctly, the methods ``select``, ``where``, ``limit`` and similar methods
+    are still synchronous.
     
-    To implement a sub-class of :class:`.BaseQueryBuilder`, you must:
+    The following methods are wrapped with ``@awaitable`` which allows them to work both synchronously, and
+     asynchronously, depending on whether they're called from a sync / async function:
+     
+    * ``get_cursor``
+    * ``close_cursor``
+    * ``build_query``
+    * ``execute``
+    * ``all``
+    * ``fetch``
+    * ``fetch_next``
     
-    * Implement all methods marked with ``@abstractmethod``, such as :meth:`.build_query`, :meth:`.all`
-      and :meth:`.fetch`
-    
-    * If your DBMS or it's Python API doesn't follow the default query configuration (see the attributes
-      starting with ``Q_``), then you should adjust the ``Q_`` attributes in your class to match your DB / DB API.
-      
-      e.g. Set ``Q_DEFAULT_PLACEHOLDER = "?"`` if your DB API expects ``?`` for prepared statement placeholders instead
-      of ``%s``.
-    
-    * While not required, you may wish to implement a constructor (:meth:`.__init__`), and override :meth:`.get_cursor`
-      to adjust it to your database API requirements
-    
+    When inheriting from this class, for each of the above methods, you should implement the method with an underline
+    in front (e.g. ``_execute``), as to avoid breaking the ``@awaitable`` "hybrid" wrapping.
     """
     query: str
     table: str
@@ -52,11 +52,14 @@ class BaseQueryBuilder(ABC):
     order_cols: List[str]
     order_dir: str
     order_dir: str
-    
-    connection = None
-    _cursor: Optional[GenericCursor]
-    _is_executed: bool
 
+    _is_executed: bool
+    _co_str = Union[str, Coroutine[Any, Any, str]]
+    _cursor: Optional[GenericAsyncCursor]
+    _connection: GenericAsyncConnection
+    connection_kwargs: dict
+    connection_args: list
+    
     # noinspection SqlNoDataSourceInspection
     Q_SELECT_CLAUSE = ' SELECT {cols} FROM {table}'
     Q_WHERE_CLAUSE = ' WHERE {w_clauses}'
@@ -67,10 +70,11 @@ class BaseQueryBuilder(ABC):
     Q_PRE_QUERY = ""
     Q_POST_QUERY = ""
     Q_DEFAULT_PLACEHOLDER = "%s"
-    
-    def __init__(self, table: str, connection: GenericConnection = None, **kwargs):
+
+    def __init__(self, table: str, connection_args: list = None, connection_kwargs: dict = None, **kwargs):
         self.query = ""
-        self.connection = connection
+        self.connection_kwargs = empty_if(connection_kwargs, {})
+        self.connection_args = empty_if(connection_args, [])
         self.table = table
         self.select_cols = []
         self.group_cols = []
@@ -82,38 +86,40 @@ class BaseQueryBuilder(ABC):
         self.limit_offset = None
         self._cursor = None
         self._is_executed = False
-    
-    def _close_callback(self, state=None):
-        log.debug("%s._close_callback was called with state: %s", self.__class__.__name__, state)
-        if self._cursor is not None:
-            self._cursor = None
 
-    def get_cursor(self, cursor_name=None, cursor_class=None, *args, **kwargs):
+    @abstractmethod
+    async def get_connection(self) -> GenericAsyncConnection:
+        raise NotImplementedError(f"{self.__class__.__name__} must implement .get_connection()!")
+    
+    async def get_cursor(self, cursor_name=None, cursor_class=None, *args, **kwargs) -> GenericAsyncCursor:
         """
         Create and return a new database cursor object.
 
         It's recommended to override this method if you're inheriting from this class, as this Generic version of
-        ``get_cursor`` does not make use of ``cursor_name`` nor ``cursor_class``.
+        ``_get_cursor`` does not make use of ``cursor_name`` nor ``cursor_class``.
 
         :param str cursor_name:   (If DB API supports it) The name for this cursor
         :param type cursor_class: (If DB API supports it) The cursor class to use
-        :return GenericCursor cursor: A cursor object which should implement at least the basic Python DB API Cursor
-                                      functionality as specified in :class:`.GenericCursor` ((PEP 249)
+        :return GenericAsyncCursor cursor: An async cursor object which should implement at least the basic Python
+                                           DB API Cursor functionality as specified in :class:`.GenericAsyncCursor`
+                                           (PEP 249)
+        
         """
-        c = self.connection.cursor(*args, **kwargs)
-        return c
-    
-    @property
-    def cursor(self) -> GenericCursor:
-        if self._cursor is None:
-            self._cursor = CursorManager(self.get_cursor(), close_callback=self._close_callback)
+        self._connection = await self.get_connection()
+        self._cursor = await self._connection.cursor(*args, **kwargs)
         return self._cursor
     
-    def close_cursor(self):
+    @async_property
+    async def cursor(self) -> GenericAsyncCursor:
+        if self._cursor is None:
+            self._cursor = await self.get_cursor()
+        return self._cursor
+    
+    async def close_cursor(self):
         if not hasattr(self, '_cursor') or self._cursor is None:
             return
         try:
-            self._cursor.close()
+            c = await self._cursor.close()
         except (BaseException, Exception):
             log.exception("close_cursor was called but exception was raised...")
         try:
@@ -121,27 +127,28 @@ class BaseQueryBuilder(ABC):
         except:
             pass
     
-    @abstractmethod
-    def build_query(self) -> str:
+    async def build_query(self) -> str:
         """
         Used internally by :py:meth:`.all` and :py:meth:`.fetch` - builds and returns a string SQL query using the
         various class attributes such as :py:attr:`.where_clauses`
         :return str query: The SQL query that will be sent to the database as a string
         """
-        raise NotImplementedError(f"{self.__class__.__name__} must implement .build_query()!")
-
-    def _build_query(self) -> str:
+        # raise NotImplementedError(f"{self.__class__.__name__} must implement .build_query()!")
+        return await self._build_query()
+    
+    @abstractmethod
+    async def _build_query(self) -> str:
         """
         This is a stock :meth:`.build_query` method which can be used by sub-classes if their DBMS is compatible
         with the ANSI SQL outputted by this method.
-        
+
         Example::
-        
-            >>> class SomeDBQueryBuilder(BaseQueryBuilder):
-            >>>     def build_query(self) -> str:
-            ...         return super()._build_query()
-        
-        
+
+            >>> class SomeDBQueryBuilder(BaseAsyncQueryBuilder):
+            >>>     async def _build_query(self) -> str:
+            ...         return await super()._build_query()
+
+
         :return str query: The SQL query that will be sent to the database as a string
         """
         s_cols = ', '.join(self.select_cols) if len(self.select_cols) > 0 else '*'
@@ -170,16 +177,16 @@ class BaseQueryBuilder(ABC):
         q += ';'
         
         log.debug(f"Built query: '''\n{q}\n'''")
-    
+        
         return q
-    
-    def execute(self, *args, **kwargs):
-        _exec = self.cursor.execute(self.build_query(), self.where_clauses_values, *args, **kwargs)
+
+    async def execute(self, *args, **kwargs) -> Any:
+        _exec = await self.cursor.execute(self.build_query(), self.where_clauses_values, *args, **kwargs)
         self._is_executed = True
         return _exec
     
     @abstractmethod
-    def all(self, query_mode=QueryMode.ROW_DICT) -> Union[Iterable[dict], Iterable[tuple]]:
+    async def all(self, query_mode=QueryMode.ROW_DICT) -> TUP_DICT:
         """
         Executes the current query, and returns an iterable cursor (results are loaded as you iterate the cursor)
 
@@ -195,7 +202,7 @@ class BaseQueryBuilder(ABC):
         raise NotImplementedError(f"{self.__class__.__name__} must implement .all()!")
 
     @abstractmethod
-    def fetch(self, query_mode=QueryMode.ROW_DICT) -> Union[dict, tuple, None]:
+    async def fetch(self, query_mode=QueryMode.ROW_DICT) -> TUPDICT_OPT:
         """
         Executes the current query, and fetches the first result as a ``dict``.
 
@@ -207,11 +214,11 @@ class BaseQueryBuilder(ABC):
         raise NotImplementedError(f"{self.__class__.__name__} must implement .fetch()!")
 
     @abstractmethod
-    def fetch_next(self, query_mode=QueryMode.ROW_DICT) -> Union[dict, tuple, None]:
+    async def fetch_next(self, query_mode=QueryMode.ROW_DICT) -> TUPDICT_OPT:
         """
         Similar to :meth:`.fetch`, but doesn't close the cursor after the query, so can be ran more than once
         to iterate row-by-row over the results.
-        
+
         :param QueryMode query_mode:
         :return:
         """
@@ -244,7 +251,7 @@ class BaseQueryBuilder(ABC):
         self.order_cols = list(args)
         self.order_dir = direction
         return self
-    
+
     def order_by(self, *args, **kwargs):
         """Alias of :meth:`.order`"""
         return self.order(*args, **kwargs)
@@ -262,15 +269,17 @@ class BaseQueryBuilder(ABC):
         :return: QueryBuilder object (for chaining)
         """
         placeholder = self.Q_DEFAULT_PLACEHOLDER if placeholder is None else placeholder
-        
+    
         # Convert .where('name', None) into "name IS NULL"
         if val is None:
             placeholder = 'NULL'
-            if compare == '=': compare = 'IS'
-            elif compare == '!=': compare = 'IS NOT'
+            if compare == '=':
+                compare = 'IS'
+            elif compare == '!=':
+                compare = 'IS NOT'
         else:
             self.where_clauses_values += [val]
-        
+    
         if len(self.where_clauses) > 0:
             self.where_clauses += ['AND {} {} {}'.format(col, compare, placeholder)]
             return self
@@ -290,7 +299,7 @@ class BaseQueryBuilder(ABC):
         :return: QueryBuilder object (for chaining)
         """
         placeholder = self.Q_DEFAULT_PLACEHOLDER if placeholder is None else placeholder
-
+    
         self.where_clauses_values += [val]
     
         if len(self.where_clauses) > 0:
@@ -323,36 +332,36 @@ class BaseQueryBuilder(ABC):
         """
         self.group_cols += list(args)
         return self
-    
-    def __iter__(self):
+
+    async def __aiter__(self):
         """
         Allow the query object to be iterated over to get results.
-        
+
         Iterating over the query builder object is equivalent to iterating over :meth:`.all`
-        
+
             >>> q = BaseQueryBuilder('users')
             >>> for r in q.select('username', 'first_name').where('id', 10, '>='):
             ...     print(r['username'], r['first_name'])
-        
+
         """
-        for r in self.all():
+        # res = await self.all()
+        async for r in self.all():
             yield r
-    
-    def __next__(self):
-        return self.fetch_next()
-    
+
+    async def __anext__(self):
+        return await self.fetch_next()
+
     def __getitem__(self, item):
         if type(item) is int:
             if item == 0:
-                return self.fetch(query_mode=QueryMode.ROW_DICT)
-            return list(self.all())[item]
+                # async with await self.fetch(query_mode=QueryMode.ROW_DICT) as r:
+                return run_sync(self.fetch, query_mode=QueryMode.ROW_DICT)
+            # async with await self.all() as rows:
+            return list(run_sync(async_iterate_list, self.all()))[item]
         if type(item) is str:
-            return self.fetch(query_mode=QueryMode.ROW_DICT)[item]
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        self.close_cursor()
+            # async with await self.fetch(query_mode=QueryMode.ROW_DICT) as r:
+            #     return r[item]
+            return run_sync(self.fetch, query_mode=QueryMode.ROW_DICT)[item]
     
-    def __del__(self):
-        self.close_cursor()
-
-
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close_cursor()
