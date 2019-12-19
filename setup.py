@@ -79,13 +79,17 @@ setup(
         'privex-helpers>=2.6.0',
         'aiosqlite',
         'async-property',
-        'nest_asyncio',
         'python-dateutil',
         'pytz',
         'typing-extensions',
     ],
     packages=find_packages(exclude=['tests', 'test.*']),
     cmdclass=extra_commands,
+    extras_require={
+        'postgres': ['psycopg2'],
+        'async': ['nest_asyncio'],
+        'nest': ['nest_asyncio'],
+    },
     classifiers=[
         "Programming Language :: Python :: 3",
         "Programming Language :: Python :: 3.6",

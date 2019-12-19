@@ -43,12 +43,10 @@ X11 / MIT License
 
 import logging
 import warnings
-import nest_asyncio
 from privex.db.base import GenericDBWrapper, CursorManager
 from privex.db.types import GenericCursor, GenericConnection
 from privex.db.query.base import BaseQueryBuilder, QueryMode
 
-nest_asyncio.apply()
 
 __all__ = [
     'GenericDBWrapper', 'CursorManager', 'GenericCursor', 'GenericConnection', 'BaseQueryBuilder', 'QueryMode',
@@ -56,17 +54,19 @@ __all__ = [
 ]
 
 log = logging.getLogger(__name__)
+
+
 try:
     from privex.db.query.postgres import PostgresQueryBuilder
     __all__ += ['PostgresQueryBuilder']
 except ImportError:
-    log.warning("Failed to import privex.db.query.postgres (missing psycopg2?)")
+    log.debug("Failed to import privex.db.query.postgres (missing psycopg2?)")
 
 try:
     from privex.db.postgres import PostgresWrapper
     __all__ += ['PostgresWrapper']
 except ImportError:
-    log.warning("Failed to import privex.db.postgres (missing psycopg2?)")
+    log.debug("Failed to import privex.db.postgres (missing psycopg2?)")
 
 
 try:
@@ -87,7 +87,7 @@ try:
     
     __all__ += ['SqliteAsyncWrapper', 'SqliteAsyncQueryBuilder']
 except ImportError:
-    log.warning(
+    log.debug(
         "Failed to import privex.db.sqlite.SqliteAsyncWrapper and/or privex.db.query.asyncx.SqliteAsyncQueryBuilder "
         "(missing aiosqlite library?)"
     )
@@ -113,7 +113,7 @@ def _setup_logging(level=logging.WARNING):
 log = _setup_logging()
 name = 'db'
 
-VERSION = '0.9.1'
+VERSION = '0.9.2'
 
 
 

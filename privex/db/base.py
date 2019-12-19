@@ -33,6 +33,7 @@ import logging
 
 from privex.db.types import GenericCursor, GenericConnection, GenericAsyncCursor, CoroNone, GenericAsyncConnection, \
     BOOL_CORO, INT_CORO, TUPD_OPT_CORO, TUPD_CORO, DICT_CORO
+from privex.db import settings
 
 log = logging.getLogger(__name__)
 DBExecution = dictable_namedtuple('DBExecution', 'query result execute_result cursor')
@@ -40,11 +41,24 @@ DBExecution = dictable_namedtuple('DBExecution', 'query result execute_result cu
 CUR = TypeVar('CUR')
 
 
+def setup_nest_async():
+    if settings.STATE.loaded.nest_asyncio or not settings.USE_NEST_ASYNCIO:
+        return True
+    
+    try:
+        import nest_asyncio
+        
+        nest_asyncio.apply()
+    except ImportError:
+        log.debug("Failed to import nest_asyncio. Some AsyncIO DB adapters / builders may not work correctly.")
+
+    settings.STATE.loaded.nest_asyncio = True
+
+
 def _should_zip(_res, query_mode='dict', auto_zip=True):
     # auto_zip = self.AUTO_ZIP_COLS
     is_dict_tuple = not isinstance(_res, dict) and not is_namedtuple(_res)
     return auto_zip and (is_dict_tuple and query_mode == 'dict')
-
 
 
 class CursorManager(GenericCursor, Generic[CUR], object):
@@ -292,7 +306,6 @@ class AsyncCursorManager(GenericAsyncCursor, Generic[CUR], object):
         if self.can_cleanup:
             self._cleanup()
             self._active_cursor_ids.remove(self._cursor_id)
-
 
 
 def cursor_to_dict(cur: Union[GenericCursor, Any]) -> DictObject:
@@ -1040,7 +1053,8 @@ class GenericAsyncDBWrapper(GenericDBWrapper):
         self.query_mode = kwargs.pop('query_mode', self.DEFAULT_QUERY_MODE)
         self.table_query = kwargs.pop('table_query', self.DEFAULT_TABLE_QUERY)
         self.table_list_query = kwargs.pop('table_list_query', self.DEFAULT_TABLE_LIST_QUERY)
-        
+
+        setup_nest_async()   # Load nest_asyncio if it wasn't already loaded
         # if auto_create_schema:
         #     # res = asyncio.run(self.create_schemas)
         #     res = self.create_schemas()

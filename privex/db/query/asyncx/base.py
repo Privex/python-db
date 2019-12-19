@@ -4,7 +4,7 @@ from typing import List, Optional, Union, Coroutine, Any
 from async_property import async_property
 from privex.helpers import awaitable, run_sync, empty_if
 
-from privex.db.base import AsyncCursorManager
+from privex.db.base import AsyncCursorManager, setup_nest_async
 from privex.db.query.base import QueryMode
 from privex.db.types import GenericAsyncCursor, GenericAsyncConnection, STR_CORO, ANY_CORO, TUPD_CORO, TUP_DICT, \
     TUPD_OPT_CORO, TUPDICT_OPT, GenericCursor
@@ -86,7 +86,9 @@ class BaseAsyncQueryBuilder(ABC):
         self.limit_offset = None
         self._cursor = None
         self._is_executed = False
-
+        
+        setup_nest_async()  # Load nest_asyncio if it wasn't already loaded
+    
     @abstractmethod
     async def get_connection(self) -> GenericAsyncConnection:
         raise NotImplementedError(f"{self.__class__.__name__} must implement .get_connection()!")
